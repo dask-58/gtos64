@@ -4,6 +4,11 @@
 #include "../include/printf.h"
 #include "../include/string.h"
 
+#define MAX_HISTORY 10
+
+static char history[MAX_HISTORY][128];
+static int history_count = 0;
+
 typedef void (*cmd_handler_t)(const char* args);
 
 typedef struct {
@@ -18,6 +23,9 @@ static void cmd_echo(const char* args);
 static void cmd_about(const char* args);
 static void cmd_uptime(const char* args);
 static void cmd_sysinfo(const char* args);
+static void cmd_history(const char* args);
+static void cmd_meminfo(const char* args);
+static void cmd_ascii(const char* args);
 
 static const command_t commands[] = {
     {"help", "Show available commands", cmd_help},
@@ -26,9 +34,37 @@ static const command_t commands[] = {
     {"about", "About this operating system", cmd_about},
     {"uptime", "Show system uptime", cmd_uptime},
     {"sysinfo", "Display system information", cmd_sysinfo},
+    {"history", "Show command history", cmd_history},
+    {"meminfo", "Show memory layout", cmd_meminfo},
+    {"ascii", "Show ASCII art", cmd_ascii},
 };
 
 static const int num_commands = sizeof(commands) / sizeof(command_t);
+
+void shell_completer(char* buffer, int* index, int max_len) {
+    int matches = 0;
+    int match_idx = -1;
+    
+    for (int i = 0; i < num_commands; i++) {
+        if (strncmp(buffer, commands[i].name, *index) == 0) {
+            matches++;
+            match_idx = i;
+        }
+    }
+    
+    if (matches == 1) {
+        const char* name = commands[match_idx].name;
+        if (strlen(name) < (size_t)max_len) {
+            strcpy(buffer, name);
+            *index = strlen(name);
+            print_str("\r");
+            print_str(COLOR_BRIGHT_CYAN);
+            print_str("gtos@kernel $ ");
+            print_str(COLOR_RESET);
+            print_str(buffer);
+        }
+    }
+}
 
 void cmd_help(const char* args) {
     (void)args;
@@ -46,6 +82,9 @@ void cmd_help(const char* args) {
         print_str("  ");
         print_str(commands[i].name);
         print_str(COLOR_RESET);
+        int len = strlen(commands[i].name);
+        for(int j=0; j<10-len; j++) uart_putc(' ');
+        
         print_str(" - ");
         print_str(COLOR_WHITE);
         print_str(commands[i].description);
@@ -223,6 +262,49 @@ void cmd_sysinfo(const char* args) {
     print_str("\n");
 }
 
+void cmd_history(const char* args) {
+    (void)args;
+    print_str(COLOR_BRIGHT_WHITE);
+    print_str("Command History:\n");
+    print_str(COLOR_RESET);
+    
+    for (int i = 0; i < history_count; i++) {
+        print_str(COLOR_YELLOW);
+        print_str("  ");
+        print_int(i + 1);
+        print_str(": ");
+        print_str(COLOR_WHITE);
+        print_str(history[i]);
+        print_str("\n");
+    }
+    print_str("\n");
+}
+
+void cmd_meminfo(const char* args) {
+    (void)args;
+    extern char __bss_start, __bss_end;
+    
+    print_str(COLOR_BRIGHT_CYAN);
+    print_str("Memory Layout:\n");
+    print_str(COLOR_RESET);
+    print_str("  Kernel Code:   0x40000000 - ...\n");
+    print_str("  BSS Section:   ");
+    print_ptr(&__bss_start);
+    print_str(" - ");
+    print_ptr(&__bss_end);
+    print_str("\n");
+    print_str("  Stack:         ... - 0x40400000\n");
+}
+
+void cmd_ascii(const char* args) {
+    (void)args;
+    print_str(COLOR_BRIGHT_MAGENTA);
+    print_str("   /\\_/\\  \n");
+    print_str("  ( o.o ) \n");
+    print_str("   > ^ <  \n");
+    print_str(COLOR_RESET);
+}
+
 void parse_command(char* input, char** cmd, char** args) {
     while (*input == ' ') {
         input++;
@@ -302,7 +384,20 @@ void shell_run(void) {
         print_str(" $ ");
         print_str(COLOR_RESET);
         
-        readline(input_buffer, sizeof(input_buffer));
+        readline(input_buffer, sizeof(input_buffer), history, history_count, shell_completer);
+        
+        if (input_buffer[0] != '\0') {
+            if (history_count == 0 || strcmp(history[history_count-1], input_buffer) != 0) {
+                if (history_count < MAX_HISTORY) {
+                    strcpy(history[history_count++], input_buffer);
+                } else {
+                    for (int i = 1; i < MAX_HISTORY; i++) {
+                        strcpy(history[i-1], history[i]);
+                    }
+                    strcpy(history[MAX_HISTORY-1], input_buffer);
+                }
+            }
+        }
         
         parse_command(input_buffer, &cmd, &args);
         execute_command(cmd, args);
