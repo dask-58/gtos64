@@ -1,9 +1,9 @@
 #include "../include/start.h"
+#include "../include/shell.h"
 
 void kernel_main(void) {
     start();
 
-    while (1) {
-        // Do nothing
-    }
+    shell_init();
+    shell_run();
 }
