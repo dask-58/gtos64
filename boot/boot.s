@@ -49,7 +49,7 @@ el2_to_el1:
 
 el1_entry:
     /* Set stack pointer */
-    ldr x0, =0x40400000
+    ldr x0, =0x41000000
     mov sp, x0
     
     /* Clear BSS */
