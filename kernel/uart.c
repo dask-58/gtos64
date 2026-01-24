@@ -58,3 +58,11 @@ char uart_getc(void) {
     
     return (char)(*UART0_DR & 0xFF);
 }
+
+int uart_getc_nonblocking(void) {
+    volatile unsigned int* uart_fr = (volatile unsigned int*)0x09000018;
+    if (*uart_fr & (1 << 4)) {
+        return -1;
+    }
+    return uart_getc();
+}
