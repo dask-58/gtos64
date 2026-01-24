@@ -23,10 +23,10 @@ kernel.elf: $(OBJECTS)
 	$(AS) $(ASFLAGS) -c $< -o $@
 
 run: kernel.elf
-	qemu-system-aarch64 -M virt -cpu cortex-a53 -kernel kernel.elf
+	qemu-system-aarch64 -M virt -cpu cortex-a53 -kernel kernel.elf -nographic
 
 debug: kernel.elf
-	qemu-system-aarch64 -M virt -cpu cortex-a53 -kernel kernel.elf -s -S
+	qemu-system-aarch64 -M virt -cpu cortex-a53 -kernel kernel.elf -nographic -s -S
 
 clean:
 	rm -f kernel.elf $(OBJECTS)
