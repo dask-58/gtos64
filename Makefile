@@ -2,10 +2,13 @@ CC = clang
 AS = clang
 LD = ld.lld
 OBJCOPY = /opt/homebrew/opt/llvm/bin/llvm-objcopy
+QEMU = qemu-system-aarch64
 
 CFLAGS = -target aarch64-none-elf -ffreestanding -nostdlib -Wall -Wextra -O2 -Iinclude
 ASFLAGS = -target aarch64-none-elf
 LDFLAGS = -T linker/linker.ld
+QEMU_FLAGS = -M virt -cpu cortex-a53 -kernel kernel.elf -nographic
+QEMU_NET_FLAGS = -netdev user,id=net0 -device virtio-net-device,netdev=net0,bus=virtio-mmio-bus.0,mac=52:54:00:12:34:56
 
 C_SOURCES = $(wildcard kernel/*.c)
 ASM_SOURCES = $(wildcard boot/*.s)
@@ -23,10 +26,10 @@ kernel.elf: $(OBJECTS)
 	$(AS) $(ASFLAGS) -c $< -o $@
 
 run: kernel.elf
-	qemu-system-aarch64 -M virt -cpu cortex-a53 -kernel kernel.elf -nographic
+	$(QEMU) $(QEMU_FLAGS) $(QEMU_NET_FLAGS)
 
 debug: kernel.elf
-	qemu-system-aarch64 -M virt -cpu cortex-a53 -kernel kernel.elf -nographic -s -S
+	$(QEMU) $(QEMU_FLAGS) $(QEMU_NET_FLAGS) -s -S
 
 clean:
 	rm -f kernel.elf $(OBJECTS)
