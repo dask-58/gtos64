@@ -206,7 +206,7 @@ void cmd_sysinfo(const char* args) {
     print_str(COLOR_WHITE);
     print_str("Stack Pointer:     ");
     print_str(COLOR_YELLOW);
-    print_ptr((void*)0x40400000);
+    print_ptr((void*)0x41000000);
     print_str("\n");
     print_str(COLOR_RESET);
     
