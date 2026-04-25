@@ -174,15 +174,4 @@ void start(void) {
     // print_str(COLOR_RESET);
     // print_str("\n");
     
-    // ===== PROMPT =====
-    print_str(COLOR_BRIGHT_CYAN);
-    print_str("gtos64");
-    print_str(COLOR_WHITE);
-    print_str("@");
-    print_str(COLOR_BRIGHT_YELLOW);
-    print_str("kernel");
-    print_str(COLOR_BRIGHT_WHITE);
-    print_str(" $ ");
-    print_str(COLOR_RESET);
-
 }

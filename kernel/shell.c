@@ -5,8 +5,21 @@
 #include "../include/string.h"
 
 #define MAX_HISTORY 10
+#define INPUT_BUFFER_SIZE 128
+#define STACK_TOP ((void*)0x41000000)
 
-static char history[MAX_HISTORY][128];
+static const char shell_prompt[] = COLOR_BRIGHT_CYAN
+                                   "gtos64"
+                                   COLOR_WHITE
+                                   "@"
+                                   COLOR_BRIGHT_YELLOW
+                                   "kernel"
+                                   COLOR_BRIGHT_WHITE
+                                   " $ "
+                                   COLOR_RESET;
+
+static char history[MAX_HISTORY][INPUT_BUFFER_SIZE];
+static int history_head = 0;
 static int history_count = 0;
 
 typedef void (*cmd_handler_t)(const char* args);
@@ -41,12 +54,55 @@ static const command_t commands[] = {
 
 static const int num_commands = sizeof(commands) / sizeof(command_t);
 
-void shell_completer(char* buffer, int* index, int max_len) {
+static int history_slot(int history_index) {
+    return (history_head + history_index) % MAX_HISTORY;
+}
+
+static const char* history_get(int history_index) {
+    if (history_index < 0 || history_index >= history_count) {
+        return 0;
+    }
+
+    return history[history_slot(history_index)];
+}
+
+static void history_push(const char* input) {
+    int slot;
+
+    if (!input || !*input) {
+        return;
+    }
+
+    if (history_count > 0 &&
+        strcmp(history_get(history_count - 1), input) == 0) {
+        return;
+    }
+
+    if (history_count < MAX_HISTORY) {
+        slot = history_slot(history_count);
+        history_count++;
+    } else {
+        slot = history_head;
+        history_head = (history_head + 1) % MAX_HISTORY;
+    }
+
+    strlcpy(history[slot], input, sizeof(history[slot]));
+}
+
+static void shell_completer(char* buffer, int* length, int* cursor,
+                            int max_len) {
     int matches = 0;
     int match_idx = -1;
+    size_t prefix_len;
+
+    if (*cursor != *length || strchr(buffer, ' ') != 0) {
+        return;
+    }
+
+    prefix_len = strlen(buffer);
     
     for (int i = 0; i < num_commands; i++) {
-        if (strncmp(buffer, commands[i].name, *index) == 0) {
+        if (strncmp(buffer, commands[i].name, prefix_len) == 0) {
             matches++;
             match_idx = i;
         }
@@ -54,14 +110,19 @@ void shell_completer(char* buffer, int* index, int max_len) {
     
     if (matches == 1) {
         const char* name = commands[match_idx].name;
-        if (strlen(name) < (size_t)max_len) {
-            strcpy(buffer, name);
-            *index = strlen(name);
-            print_str("\r");
-            print_str(COLOR_BRIGHT_CYAN);
-            print_str("gtos@kernel $ ");
-            print_str(COLOR_RESET);
-            print_str(buffer);
+        size_t name_len = strlen(name);
+
+        if (name_len < (size_t)max_len) {
+            strlcpy(buffer, name, (size_t)max_len);
+            *length = (int)strlen(buffer);
+            *cursor = *length;
+
+            if (*length < max_len - 1) {
+                buffer[*length] = ' ';
+                (*length)++;
+                buffer[*length] = '\0';
+                *cursor = *length;
+            }
         }
     }
 }
@@ -175,6 +236,7 @@ void cmd_uptime(const char* args) {
 
 void cmd_sysinfo(const char* args) {
     (void)args;
+    extern char __kernel_start, __kernel_end;
     extern char __bss_start, __bss_end;
     
     print_str(COLOR_BRIGHT_WHITE);
@@ -206,7 +268,7 @@ void cmd_sysinfo(const char* args) {
     print_str(COLOR_WHITE);
     print_str("Stack Pointer:     ");
     print_str(COLOR_YELLOW);
-    print_ptr((void*)0x41000000);
+    print_ptr(STACK_TOP);
     print_str("\n");
     print_str(COLOR_RESET);
     
@@ -215,7 +277,16 @@ void cmd_sysinfo(const char* args) {
     print_str(COLOR_WHITE);
     print_str("Kernel Base:       ");
     print_str(COLOR_YELLOW);
-    print_ptr((void*)0x40000000);
+    print_ptr((void*)&__kernel_start);
+    print_str("\n");
+    print_str(COLOR_RESET);
+
+    print_str(COLOR_GREEN);
+    print_str("  [✓] ");
+    print_str(COLOR_WHITE);
+    print_str("Kernel End:        ");
+    print_str(COLOR_YELLOW);
+    print_ptr((void*)&__kernel_end);
     print_str("\n");
     print_str(COLOR_RESET);
     
@@ -274,7 +345,7 @@ void cmd_history(const char* args) {
         print_int(i + 1);
         print_str(": ");
         print_str(COLOR_WHITE);
-        print_str(history[i]);
+        print_str(history_get(i));
         print_str("\n");
     }
     print_str("\n");
@@ -282,18 +353,43 @@ void cmd_history(const char* args) {
 
 void cmd_meminfo(const char* args) {
     (void)args;
+    extern char __text_start, __text_end;
+    extern char __rodata_start, __rodata_end;
+    extern char __data_start, __data_end;
     extern char __bss_start, __bss_end;
+    extern char __kernel_end;
     
     print_str(COLOR_BRIGHT_CYAN);
     print_str("Memory Layout:\n");
     print_str(COLOR_RESET);
-    print_str("  Kernel Code:   0x40000000 - ...\n");
-    print_str("  BSS Section:   ");
+    print_str("  .text:         ");
+    print_ptr(&__text_start);
+    print_str(" - ");
+    print_ptr(&__text_end);
+    print_str("\n");
+    print_str("  .rodata:       ");
+    print_ptr(&__rodata_start);
+    print_str(" - ");
+    print_ptr(&__rodata_end);
+    print_str("\n");
+    print_str("  .data:         ");
+    print_ptr(&__data_start);
+    print_str(" - ");
+    print_ptr(&__data_end);
+    print_str("\n");
+    print_str("  .bss:          ");
     print_ptr(&__bss_start);
     print_str(" - ");
     print_ptr(&__bss_end);
     print_str("\n");
-    print_str("  Stack:         ... - 0x40400000\n");
+    print_str("  Kernel Image:  ");
+    print_ptr(&__text_start);
+    print_str(" - ");
+    print_ptr(&__kernel_end);
+    print_str("\n");
+    print_str("  Stack Top:     ");
+    print_ptr(STACK_TOP);
+    print_str("\n");
 }
 
 void cmd_ascii(const char* args) {
@@ -369,34 +465,18 @@ void shell_init(void) {
 }
 
 void shell_run(void) {
-    char input_buffer[128];
+    char input_buffer[INPUT_BUFFER_SIZE];
     char* cmd;
     char* args;
     
     while (1) {
-        print_str(COLOR_BRIGHT_CYAN);
-        print_str("gtos");
-        print_str(COLOR_WHITE);
-        print_str("@");
-        print_str(COLOR_BRIGHT_YELLOW);
-        print_str("kernel");
-        print_str(COLOR_BRIGHT_WHITE);
-        print_str(" $ ");
-        print_str(COLOR_RESET);
+        print_str(shell_prompt);
         
-        readline(input_buffer, sizeof(input_buffer), history, history_count, shell_completer);
+        readline(input_buffer, sizeof(input_buffer), shell_prompt, history_count,
+                 history_get, shell_completer);
         
         if (input_buffer[0] != '\0') {
-            if (history_count == 0 || strcmp(history[history_count-1], input_buffer) != 0) {
-                if (history_count < MAX_HISTORY) {
-                    strcpy(history[history_count++], input_buffer);
-                } else {
-                    for (int i = 1; i < MAX_HISTORY; i++) {
-                        strcpy(history[i-1], history[i]);
-                    }
-                    strcpy(history[MAX_HISTORY-1], input_buffer);
-                }
-            }
+            history_push(input_buffer);
         }
         
         parse_command(input_buffer, &cmd, &args);
